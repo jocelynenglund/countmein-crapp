@@ -31,6 +31,9 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
         builder.Ignore(c => c.InSignUpOrder);
         builder.Ignore(c => c.SpotHolders);
         builder.Ignore(c => c.Waitlist);
+        builder.Ignore(c => c.LetInFromWaitlist);
+        builder.Ignore(c => c.LostTheirSpot);
+        builder.Ignore(c => c.ReleaseAt);
     }
 }
 

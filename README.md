@@ -57,6 +57,19 @@ The connection string is `ConnectionStrings:CountMeIn` (default: localhost port 
 - `GET /api/checks/{id}/door-list` (owner only): checked in, expected, waitlist. The pitch gains `spotsLeft` and `waitlistCount`.
 - `JoinedOn` (a date) became `SignedUpAt` (a timestamp), which gives the ordering; per-day sign-ups are derived from it.
 
+## Releasing unclaimed spots (branch one-more-feature)
+
+From 10 minutes before `doorsClose` (never earlier than `doorsOpen`), spots held by people who haven't checked in are released. They go to waitlisted people who already tried to check in, first come first served by their first attempt; the rest of the released spots stay empty. People who lost a spot are refused with "Your spot went to the waitlist". A hosted service (`SpotReleaseWorker`, every 30 s, `SpotRelease:IntervalSeconds`) does it with no owner action. Checks without a capacity have nothing to release. The door list gains `letInFromWaitlist` and `lostTheirSpot`.
+
+To know who tried first, a refused waitlist check-in now stores `DoorAttemptAt` (first attempt, while the doors are open and before the release). New columns: `participants.DoorAttemptAt/SpotLostAt/LetInAt`, `interest_checks.SpotsReleasedAt/ReleasedSpots`.
+
+### Checks that were already running when this shipped
+
+- **Works:** checks whose release moment is still ahead are released on time by the worker, using the capacity, doors and sign-up order already stored. Spot holders who haven't arrived lose their spot as described.
+- **Does not work, and cannot be known:** waitlisted people who tried the door *before* this shipped. Those attempts were refused and nothing was stored, so their order is lost. They get no priority until they try again after the deploy; their attempt time is then the new one. If nobody on the waitlist tries again before the release, the unclaimed spots are released to nobody.
+- **Checks already past their release moment at deploy are not released at all.** There is no attempt data to give the spots to, so taking spots away from people for nobody would only do harm. The migration marks them as released with nothing taken away; they behave exactly as before.
+- A check-in racing the release by a few milliseconds is not guarded (no row version on the check).
+
 ## Design choices
 
 - **Current state only.** Two tables: `interest_checks` and `participants`. Nothing records what used to be true.

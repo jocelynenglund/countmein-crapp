@@ -26,4 +26,5 @@ public record CheckedInDto(string Name, DateTimeOffset At);
 
 /// <summary>What the owner sees at the door: who is in, who is still expected, and who is waiting for a spot.</summary>
 public record DoorListDto(
-    IReadOnlyList<CheckedInDto> CheckedIn, IReadOnlyList<string> Expected, IReadOnlyList<string> Waitlist);
+    IReadOnlyList<CheckedInDto> CheckedIn, IReadOnlyList<string> Expected, IReadOnlyList<string> Waitlist,
+    IReadOnlyList<string> LetInFromWaitlist, IReadOnlyList<string> LostTheirSpot);

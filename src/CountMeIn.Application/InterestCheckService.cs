@@ -46,7 +46,24 @@ public class InterestCheckService(
     public async Task CheckInAsync(string checkId, CheckInRequest request, CancellationToken ct = default)
     {
         var check = await Load(checkId, ct);
-        check.CheckIn(request.PersonId ?? "", clock.GetUtcNow());
+        try
+        {
+            check.CheckIn(request.PersonId ?? "", clock.GetUtcNow());
+        }
+        catch (OnTheWaitlistException)
+        {
+            // The refusal is still news: the attempt (and when it happened) was recorded and must be kept.
+            await unitOfWork.SaveChangesAsync(ct);
+            throw;
+        }
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task ReleaseDueSpotsAsync(CancellationToken ct = default)
+    {
+        var now = clock.GetUtcNow();
+        foreach (var check in await checks.GetDueForSpotReleaseAsync(now, ct))
+            check.ReleaseUnclaimedSpots(now);
         await unitOfWork.SaveChangesAsync(ct);
     }
 
@@ -62,7 +79,10 @@ public class InterestCheckService(
         var expected = check.SpotHolders.Where(p => p.CheckedInAt is null).Select(p => p.Name).ToList();
         var waitlist = check.Waitlist.Select(p => p.Name).ToList();
 
-        return new DoorListDto(checkedIn, expected, waitlist);
+        var letIn = check.LetInFromWaitlist.Select(p => p.Name).ToList();
+        var lost = check.LostTheirSpot.Select(p => p.Name).ToList();
+
+        return new DoorListDto(checkedIn, expected, waitlist, letIn, lost);
     }
 
     public async Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default)

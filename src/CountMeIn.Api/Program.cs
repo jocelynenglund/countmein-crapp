@@ -12,6 +12,7 @@ builder.Services.AddInfrastructure(
     builder.Configuration.GetConnectionString("CountMeIn") ?? InfrastructureServices.DefaultConnectionString);
 builder.Services.AddExceptionHandler<DomainExceptionHandler>();
 builder.Services.AddProblemDetails();
+builder.Services.AddHostedService<SpotReleaseWorker>();
 
 var app = builder.Build();
 

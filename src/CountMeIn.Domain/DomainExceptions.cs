@@ -23,3 +23,5 @@ public class OutsideEntryWindowException() : DomainException("The doors aren't o
 public class OnTheWaitlistException() : DomainException("You're on the waitlist");
 
 public class AlreadyCheckedInException() : DomainException("You're already checked in");
+
+public class SpotWentToWaitlistException() : DomainException("Your spot went to the waitlist");

@@ -56,6 +56,12 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                         .HasMaxLength(1000)
                         .HasColumnType("character varying(1000)");
 
+                    b.Property<int>("ReleasedSpots")
+                        .HasColumnType("integer");
+
+                    b.Property<DateTimeOffset?>("SpotsReleasedAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Title")
                         .IsRequired()
                         .HasMaxLength(120)
@@ -77,6 +83,9 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                     b.Property<DateTimeOffset?>("CheckedInAt")
                         .HasColumnType("timestamp with time zone");
 
+                    b.Property<DateTimeOffset?>("DoorAttemptAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -84,6 +93,9 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                     b.Property<string>("InterestCheckId")
                         .IsRequired()
                         .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset?>("LetInAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -96,6 +108,9 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                         .HasColumnType("character varying(64)");
 
                     b.Property<DateTimeOffset>("SignedUpAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("SpotLostAt")
                         .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
