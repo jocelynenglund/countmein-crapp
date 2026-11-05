@@ -581,13 +581,13 @@ public class InterestCheckTests
     }
 
     [Fact]
-    public void Nobody_sees_the_venue_before_the_reveal()
+    public void Nobody_sees_the_venue_before_the_early_bird_window()
     {
         var check = WithDoors(capacity: 2);
         CountIn(check, "p1", 0);
         check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
 
-        Assert.Null(check.VenueVisibleTo("p1", RevealAt.AddSeconds(-1)));
+        Assert.Null(check.VenueVisibleTo("p1", RevealAt.AddHours(-2)));
     }
 
     [Fact]
@@ -636,5 +636,64 @@ public class InterestCheckTests
 
         Assert.Null(check.VenueVisibleTo("p1", RevealAt));
         Assert.Null(check.VenueVisibleTo("stranger", RevealAt));
+    }
+
+    // Early birds
+
+    private static readonly DateTimeOffset EarlyBirdStart = RevealAt.AddHours(-1);
+
+    [Fact]
+    public void Early_birds_see_the_venue_an_hour_before_everyone_else()
+    {
+        var check = WithDoors(capacity: 3);
+        CountIn(check, "p1", 0);
+        CountIn(check, "p2", 1);
+        check.Withdraw("p2");
+        CountIn(check, "p2", 2);        // came back: no longer an early bird
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+
+        Assert.Null(check.VenueVisibleTo("p1", EarlyBirdStart.AddSeconds(-1)));
+        Assert.Equal("The library", check.VenueVisibleTo("p1", EarlyBirdStart));
+        Assert.Null(check.VenueVisibleTo("p2", EarlyBirdStart));
+        Assert.Null(check.VenueVisibleTo("p2", RevealAt.AddSeconds(-1)));
+        Assert.Equal("The library", check.VenueVisibleTo("p2", RevealAt));
+    }
+
+    [Fact]
+    public void Changing_your_mind_once_is_remembered_even_after_counting_back_in()
+    {
+        var check = WithDoors();
+        CountIn(check, "p1", 0);
+        check.Withdraw("p1");
+        CountIn(check, "p1", 1);
+        check.Withdraw("p1");
+        CountIn(check, "p1", 2);
+
+        Assert.Empty(check.EarlyBirds);
+        Assert.Single(check.ChangedMinds);
+    }
+
+    [Fact]
+    public void Waitlisted_people_are_not_early_birds_until_they_hold_a_spot()
+    {
+        var check = FiveSignedUp();
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+        Assert.Null(check.VenueVisibleTo("p3", EarlyBirdStart));
+        Assert.Equal(["p1", "p2"], Names(check.EarlyBirds));
+
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(5)));
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Equal(["p3"], Names(check.EarlyBirds));
+        Assert.Equal("The library", check.VenueVisibleTo("p3", EarlyBirdStart));
+    }
+
+    [Fact]
+    public void Someone_who_moved_up_after_a_withdrawal_is_an_early_bird_if_they_never_changed_their_mind()
+    {
+        var check = FiveSignedUp();
+        check.Withdraw("p1");
+
+        Assert.Equal(["p2", "p3"], Names(check.EarlyBirds));
     }
 }

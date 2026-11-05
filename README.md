@@ -79,6 +79,16 @@ To know who tried first, a refused waitlist check-in now stores `DoorAttemptAt` 
 
 **Checks already running:** everything works. The columns are null for them, so they simply have no venue until the owner sets one, and they use the same capacity, waitlist and release data as before. Nothing about the past is needed. The one thing to know: a check that is already past the time the owner wants to reveal can still be given a `revealAt` in the past, which reveals at once.
 
+## Early birds (branch early-birds)
+
+- People who can see the venue (hold a spot or were let in, still counted in) and have **never changed their mind on this check** see it one hour before `revealAt`. Everyone else eligible sees it at `revealAt`. Changing your mind once counts for good, even if you count yourself in again.
+- Changing your mind deletes the participant row, so it can no longer remember that. A new table `changed_minds` (one row per person per check) is filled by `Withdraw`.
+- The door list gains `earlyBirds`: the names of current spot holders who never changed their mind.
+
+**Checks already running:**
+- **Works:** every change of mind from the deploy onwards is remembered, and the venue and door list use it at once. People who have not changed their mind, and people who withdrew after the deploy, are classified correctly.
+- **Cannot be known:** anyone who changed their mind *before* the deploy and then counted back in. The old code deleted their row and kept no trace (sign-up times and ids don't reveal it), so they look as if they never changed their mind and will be treated as early birds. The only wrongly-treated people are those who withdrew and came back before the deploy; there is no way to find them afterwards. People who withdrew and have not come back are not participants, so they are unaffected.
+
 ## Design choices
 
 - **Current state only.** Two tables: `interest_checks` and `participants`. Nothing records what used to be true.

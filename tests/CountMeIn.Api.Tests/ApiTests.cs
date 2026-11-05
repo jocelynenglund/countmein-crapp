@@ -256,7 +256,7 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
         Assert.Equal(HttpStatusCode.NoContent, (await _client.SendAsync(set)).StatusCode);
 
         var before = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p1"))!;
-        Assert.Null(before.Venue);
+        Assert.Equal("The library", before.Venue);   // Ana never changed her mind: an early bird, an hour ahead
         Assert.NotNull(before.RevealAt);
 
         await Task.Delay(TimeSpan.FromSeconds(2.5));
@@ -272,5 +272,30 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
         var refused = await _client.SendAsync(tooLate);
         Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
         Assert.Equal("The venue has already been revealed", await Error(refused));
+    }
+
+    [Fact]
+    public async Task Early_birds_see_the_venue_before_the_reveal_over_http_and_it_survives_a_reload()
+    {
+        var response = await _client.PostAsJsonAsync("/api/checks", new { title = "Secret supper", goal = 2 });
+        var check = (await response.Content.ReadFromJsonAsync<StartedInterestCheckDto>())!;
+        await CountIn(check.CheckId, "p1", "Ana");
+        await CountIn(check.CheckId, "p2", "Ben");
+        await _client.DeleteAsync($"/api/checks/{check.CheckId}/interest/p2");
+        await CountIn(check.CheckId, "p2", "Ben");   // changed their mind once, so not an early bird
+        var set = new HttpRequestMessage(HttpMethod.Put, $"/api/checks/{check.CheckId}/venue")
+        { Content = JsonContent.Create(new { venue = "The library", revealAt = DateTimeOffset.UtcNow.AddMinutes(30) }) };
+        set.Headers.Add("X-Owner-Key", check.OwnerKey);
+        await _client.SendAsync(set);
+
+        var ana = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p1"))!;
+        var ben = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p2"))!;
+        Assert.Equal("The library", ana.Venue);
+        Assert.Null(ben.Venue);
+
+        var request = new HttpRequestMessage(HttpMethod.Get, $"/api/checks/{check.CheckId}/door-list");
+        request.Headers.Add("X-Owner-Key", check.OwnerKey);
+        var doorList = (await (await _client.SendAsync(request)).Content.ReadFromJsonAsync<DoorListDto>())!;
+        Assert.Equal(["Ana"], doorList.EarlyBirds);
     }
 }
