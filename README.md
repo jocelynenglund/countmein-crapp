@@ -70,6 +70,15 @@ To know who tried first, a refused waitlist check-in now stores `DoorAttemptAt` 
 - **Checks already past their release moment at deploy are not released at all.** There is no attempt data to give the spots to, so taking spots away from people for nobody would only do harm. The migration marks them as released with nothing taken away; they behave exactly as before.
 - A check-in racing the release by a few milliseconds is not guarded (no row version on the check).
 
+## Venue reveal (branch venue-reveal)
+
+- `PUT /api/checks/{id}/venue` (owner only, `X-Owner-Key`) with `{venue, revealAt}`. It can be set or changed until `revealAt` has passed; after that it is refused ("The venue has already been revealed").
+- `GET /api/checks/{id}/venue?personId=...` returns `{revealAt, venue}`. `venue` is null before `revealAt`, and always null for anyone who isn't counted in with a spot. A spot holder, or someone let in from the waitlist, sees it. A waitlisted person sees it from the moment they are let in; someone who changed their mind, lost their spot or never counted in never does. "At that moment" is read as the moment they ask, using the current spot state. The person id is the same unauthenticated id used to count in, as elsewhere in this app.
+- The door list shows `venue` and `venueRevealAt`.
+- Two nullable columns on `interest_checks` (`Venue`, `VenueRevealAt`).
+
+**Checks already running:** everything works. The columns are null for them, so they simply have no venue until the owner sets one, and they use the same capacity, waitlist and release data as before. Nothing about the past is needed. The one thing to know: a check that is already past the time the owner wants to reveal can still be given a `revealAt` in the past, which reveals at once.
+
 ## Design choices
 
 - **Current state only.** Two tables: `interest_checks` and `participants`. Nothing records what used to be true.

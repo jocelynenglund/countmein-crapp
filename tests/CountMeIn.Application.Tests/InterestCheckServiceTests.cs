@@ -505,4 +505,68 @@ public class InterestCheckServiceTests
 
         Assert.Equal(saves + 1, _uow.Saves);
     }
+
+    // The venue reveal
+
+    private static readonly DateTimeOffset RevealAt = DoorsOpen.AddMinutes(-30);
+
+    [Fact]
+    public async Task The_venue_is_hidden_until_the_reveal_and_then_shown_to_people_with_a_spot()
+    {
+        var check = await StartWithDoors(capacity: 1);
+        await CountIn(check, "p1", "Ana");
+        await CountIn(check, "p2", "Ben");
+        await _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("The library", RevealAt));
+
+        Assert.Equal(new VenueDto(RevealAt, null), await _service.GetVenueAsync(check.CheckId, "p1"));
+
+        _clock.SetUtcNow(RevealAt);
+        Assert.Equal(new VenueDto(RevealAt, "The library"), await _service.GetVenueAsync(check.CheckId, "p1"));
+        Assert.Equal(new VenueDto(RevealAt, null), await _service.GetVenueAsync(check.CheckId, "p2"));       // waitlisted
+        Assert.Equal(new VenueDto(RevealAt, null), await _service.GetVenueAsync(check.CheckId, "nobody"));
+        Assert.Equal(new VenueDto(RevealAt, null), await _service.GetVenueAsync(check.CheckId, null));
+    }
+
+    [Fact]
+    public async Task A_check_without_a_venue_has_nothing_to_reveal()
+    {
+        var check = await StartCheck();
+        await CountIn(check, "p1", "Ana");
+
+        Assert.Equal(new VenueDto(null, null), await _service.GetVenueAsync(check.CheckId, "p1"));
+    }
+
+    [Fact]
+    public async Task The_venue_can_be_changed_until_the_reveal_and_not_after()
+    {
+        var check = await StartCheck();
+        await _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("The library", RevealAt));
+        await _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("The pub", RevealAt));
+
+        _clock.SetUtcNow(RevealAt);
+        await Assert.ThrowsAsync<VenueAlreadyRevealedException>(() =>
+            _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("Home", RevealAt.AddDays(1))));
+    }
+
+    [Fact]
+    public async Task Only_the_owner_can_set_the_venue()
+    {
+        var check = await StartCheck();
+        await Assert.ThrowsAsync<NotOwnerException>(() =>
+            _service.SetVenueAsync(check.CheckId, "wrong", new SetVenueRequest("The pub", RevealAt)));
+        await Assert.ThrowsAsync<InterestCheckNotFoundException>(() =>
+            _service.SetVenueAsync("nope", "k", new SetVenueRequest("The pub", RevealAt)));
+    }
+
+    [Fact]
+    public async Task The_door_list_shows_the_venue_and_when_it_is_revealed()
+    {
+        var check = await StartWithDoors(capacity: null);
+        await _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("The library", RevealAt));
+
+        var doorList = await _service.GetDoorListAsync(check.CheckId, check.OwnerKey);
+
+        Assert.Equal("The library", doorList.Venue);
+        Assert.Equal(RevealAt, doorList.VenueRevealAt);
+    }
 }

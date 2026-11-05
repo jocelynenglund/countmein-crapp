@@ -533,4 +533,108 @@ public class InterestCheckTests
         Assert.Equal(0, check.SpotsLeft);
         Assert.Equal(3, check.WaitlistCount);
     }
+
+    // The venue reveal
+
+    private static readonly DateTimeOffset RevealAt = DoorsOpen.AddMinutes(-30);
+
+    [Fact]
+    public void The_owner_can_set_and_then_change_the_venue_before_the_reveal()
+    {
+        var check = WithDoors();
+        check.SetVenue(OwnerKeyValue, " The library ", RevealAt, At);
+        check.SetVenue(OwnerKeyValue, "The pub", RevealAt.AddMinutes(10), At.AddMinutes(5));
+
+        Assert.Equal("The pub", check.Venue);
+        Assert.Equal(RevealAt.AddMinutes(10), check.VenueRevealAt);
+    }
+
+    [Fact]
+    public void Only_the_owner_can_set_the_venue()
+    {
+        var check = WithDoors();
+        Assert.Throws<NotOwnerException>(() => check.SetVenue("wrong", "The pub", RevealAt, At));
+        Assert.Null(check.Venue);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("  ")]
+    [InlineData(null)]
+    public void The_venue_is_required(string? venue)
+    {
+        var check = WithDoors();
+        var ex = Assert.Throws<InvalidInterestCheckException>(() => check.SetVenue(OwnerKeyValue, venue, RevealAt, At));
+        Assert.Equal("Where is it?", ex.Message);
+    }
+
+    [Fact]
+    public void The_venue_cant_be_changed_once_revealed()
+    {
+        var check = WithDoors();
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+
+        var ex = Assert.Throws<VenueAlreadyRevealedException>(() =>
+            check.SetVenue(OwnerKeyValue, "The pub", RevealAt.AddHours(5), RevealAt));
+        Assert.Equal("The venue has already been revealed", ex.Message);
+        Assert.Equal("The library", check.Venue);
+    }
+
+    [Fact]
+    public void Nobody_sees_the_venue_before_the_reveal()
+    {
+        var check = WithDoors(capacity: 2);
+        CountIn(check, "p1", 0);
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+
+        Assert.Null(check.VenueVisibleTo("p1", RevealAt.AddSeconds(-1)));
+    }
+
+    [Fact]
+    public void A_spot_holder_sees_the_venue_from_the_reveal()
+    {
+        var check = WithDoors(capacity: 2);
+        CountIn(check, "p1", 0);
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+
+        Assert.Equal("The library", check.VenueVisibleTo("p1", RevealAt));
+    }
+
+    [Fact]
+    public void A_waitlisted_person_sees_it_once_a_spot_opens_up()
+    {
+        var check = FiveSignedUp();
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+        Assert.Null(check.VenueVisibleTo("p3", RevealAt));
+
+        check.Withdraw("p1");
+        check.Withdraw("p2");
+
+        Assert.Equal("The library", check.VenueVisibleTo("p3", RevealAt));
+    }
+
+    [Fact]
+    public void Someone_let_in_from_the_waitlist_sees_it_and_someone_who_lost_their_spot_does_not()
+    {
+        var check = FiveSignedUp();
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(5)));
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Equal("The library", check.VenueVisibleTo("p3", ReleaseMoment));
+        Assert.Null(check.VenueVisibleTo("p1", ReleaseMoment));   // lost their spot
+        Assert.Null(check.VenueVisibleTo("p4", ReleaseMoment));   // still waiting
+    }
+
+    [Fact]
+    public void Someone_who_changed_their_mind_or_never_counted_in_does_not_see_it()
+    {
+        var check = WithDoors(capacity: 2);
+        CountIn(check, "p1", 0);
+        check.SetVenue(OwnerKeyValue, "The library", RevealAt, At);
+        check.Withdraw("p1");
+
+        Assert.Null(check.VenueVisibleTo("p1", RevealAt));
+        Assert.Null(check.VenueVisibleTo("stranger", RevealAt));
+    }
 }
