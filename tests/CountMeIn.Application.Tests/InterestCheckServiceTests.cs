@@ -415,4 +415,94 @@ public class InterestCheckServiceTests
         var check = await StartWithDoors(capacity: null);
         await Assert.ThrowsAsync<NotOwnerException>(() => _service.GetDoorListAsync(check.CheckId, "wrong"));
     }
+
+    // Releasing unclaimed spots
+
+    private static readonly DateTimeOffset ReleaseMoment = DoorsClose.AddMinutes(-10);
+
+    [Fact]
+    public async Task Unclaimed_spots_are_released_to_the_waitlisted_who_tried_the_door()
+    {
+        var check = await StartWithDoors(capacity: 2);
+        await CountIn(check, "p1", "Ana");
+        await CountIn(check, "p2", "Ben");
+        await CountIn(check, "p3", "Cy");
+        await CountIn(check, "p4", "Di");
+        await CountIn(check, "p5", "Ed");
+        _clock.SetUtcNow(DoorsOpen.AddMinutes(10));
+        await CheckIn(check, "p1");
+        _clock.SetUtcNow(DoorsOpen.AddMinutes(20));
+        await Assert.ThrowsAsync<OnTheWaitlistException>(() => CheckIn(check, "p5"));   // Ed tries first
+        _clock.SetUtcNow(DoorsOpen.AddMinutes(30));
+        await Assert.ThrowsAsync<OnTheWaitlistException>(() => CheckIn(check, "p3"));   // then Cy
+
+        _clock.SetUtcNow(ReleaseMoment);
+        await _service.ReleaseDueSpotsAsync();
+
+        var doorList = await _service.GetDoorListAsync(check.CheckId, check.OwnerKey);
+        Assert.Equal(["Ed"], doorList.LetInFromWaitlist);
+        Assert.Equal(["Ben"], doorList.LostTheirSpot);
+        Assert.Equal(["Ed"], doorList.Expected);
+        Assert.Equal(["Cy", "Di"], doorList.Waitlist);
+
+        await CheckIn(check, "p5");
+        var ex = await Assert.ThrowsAsync<SpotWentToWaitlistException>(() => CheckIn(check, "p2"));
+        Assert.Equal("Your spot went to the waitlist", ex.Message);
+    }
+
+    [Fact]
+    public async Task Nothing_is_released_before_the_release_moment()
+    {
+        var check = await StartWithDoors(capacity: 1);
+        await CountIn(check, "p1", "Ana");
+        _clock.SetUtcNow(ReleaseMoment.AddSeconds(-1));
+
+        await _service.ReleaseDueSpotsAsync();
+
+        Assert.Empty((await _service.GetDoorListAsync(check.CheckId, check.OwnerKey)).LostTheirSpot);
+    }
+
+    [Fact]
+    public async Task A_short_window_releases_when_the_doors_open()
+    {
+        var check = await _service.StartAsync(new StartInterestCheckRequest(
+            "Board games", null, 10, null, 1, DoorsOpen, DoorsOpen.AddMinutes(5)));
+        await CountIn(check, "p1", "Ana");
+
+        _clock.SetUtcNow(DoorsOpen.AddMinutes(-1));
+        await _service.ReleaseDueSpotsAsync();
+        Assert.Empty((await _service.GetDoorListAsync(check.CheckId, check.OwnerKey)).LostTheirSpot);
+
+        _clock.SetUtcNow(DoorsOpen);
+        await _service.ReleaseDueSpotsAsync();
+        Assert.Equal(["Ana"], (await _service.GetDoorListAsync(check.CheckId, check.OwnerKey)).LostTheirSpot);
+    }
+
+    [Fact]
+    public async Task Releasing_twice_changes_nothing()
+    {
+        var check = await StartWithDoors(capacity: 1);
+        await CountIn(check, "p1", "Ana");
+        _clock.SetUtcNow(ReleaseMoment);
+        await _service.ReleaseDueSpotsAsync();
+
+        _clock.SetUtcNow(ReleaseMoment.AddMinutes(3));
+        await _service.ReleaseDueSpotsAsync();
+
+        Assert.Equal(["Ana"], (await _service.GetDoorListAsync(check.CheckId, check.OwnerKey)).LostTheirSpot);
+    }
+
+    [Fact]
+    public async Task A_waitlisted_attempt_is_kept_even_though_the_check_in_is_refused()
+    {
+        var check = await StartWithDoors(capacity: 1);
+        await CountIn(check, "p1", "Ana");
+        await CountIn(check, "p2", "Ben");
+        _clock.SetUtcNow(DoorsOpen.AddMinutes(5));
+        var saves = _uow.Saves;
+
+        await Assert.ThrowsAsync<OnTheWaitlistException>(() => CheckIn(check, "p2"));
+
+        Assert.Equal(saves + 1, _uow.Saves);
+    }
 }

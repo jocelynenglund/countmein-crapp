@@ -15,6 +15,10 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
 {
     private readonly HttpClient _client = factory.CreateClient();
 
+    // A host whose background worker looks for due releases every second instead of every 30.
+    private readonly WebApplicationFactory<Program> _fastWorker =
+        factory.WithWebHostBuilder(b => b.UseSetting("SpotRelease:IntervalSeconds", "1"));
+
     private async Task<StartedInterestCheckDto> Start(int goal = 10, string title = "Saturday board-game club")
     {
         var response = await _client.PostAsJsonAsync("/api/checks",
@@ -195,5 +199,40 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
         var response = await _client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p1" });
 
         Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task The_worker_releases_unclaimed_spots_by_itself()
+    {
+        var client = _fastWorker.CreateClient();
+        // Doors close 10 minutes and a few seconds from now, so the release comes a moment after the sign-ups.
+        var now = DateTimeOffset.UtcNow;
+        var response = await client.PostAsJsonAsync("/api/checks", new
+        {
+            title = "Release night", goal = 2, capacity = 1, doorsOpen = now.AddHours(-1), doorsClose = now.AddMinutes(10).AddSeconds(5),
+        });
+        var check = (await response.Content.ReadFromJsonAsync<StartedInterestCheckDto>())!;
+        await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/interest", new { personId = "p1", name = "Ana" });
+        await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/interest", new { personId = "p2", name = "Ben" });
+        var tried = await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p2" });
+        Assert.Equal("You're on the waitlist", await Error(tried));
+
+        DoorListDto? doorList = null;
+        for (var i = 0; i < 40 && doorList is not { LostTheirSpot.Count: > 0 }; i++)
+        {
+            await Task.Delay(500);
+            var request = new HttpRequestMessage(HttpMethod.Get, $"/api/checks/{check.CheckId}/door-list");
+            request.Headers.Add("X-Owner-Key", check.OwnerKey);
+            doorList = await (await client.SendAsync(request)).Content.ReadFromJsonAsync<DoorListDto>();
+        }
+
+        Assert.Equal(["Ana"], doorList!.LostTheirSpot);
+        Assert.Equal(["Ben"], doorList.LetInFromWaitlist);
+
+        var ana = await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p1" });
+        Assert.Equal(HttpStatusCode.Conflict, ana.StatusCode);
+        Assert.Equal("Your spot went to the waitlist", await Error(ana));
+        var ben = await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p2" });
+        Assert.Equal(HttpStatusCode.NoContent, ben.StatusCode);
     }
 }
