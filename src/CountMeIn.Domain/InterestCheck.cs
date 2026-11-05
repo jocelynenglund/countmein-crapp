@@ -11,6 +11,7 @@ public class InterestCheck
     public const int MaxGoal = 100_000;
 
     private readonly List<Participant> _participants = [];
+    private readonly List<ChangedMind> _changedMinds = [];
 
     private InterestCheck() { } // EF Core
 
@@ -38,11 +39,16 @@ public class InterestCheck
 
     public IReadOnlyCollection<Participant> Participants => _participants;
 
+    public IReadOnlyCollection<ChangedMind> ChangedMinds => _changedMinds;
+
     public int Count => _participants.Count;
 
     public bool GoalReached => Count >= Goal;
 
     public const int MaxVenueLength = 200;
+
+    /// <summary>People who never changed their mind see the venue this long before everyone else.</summary>
+    public static readonly TimeSpan EarlyBirdLead = TimeSpan.FromHours(1);
 
     /// <summary>Where it happens. Hidden until <see cref="VenueRevealAt"/>, then shown only to people who are in.</summary>
     public string? Venue { get; private set; }
@@ -92,6 +98,10 @@ public class InterestCheck
             return InSignUpOrder.Where(p => p.SpotLostAt is null && !holders.Contains(p));
         }
     }
+
+    /// <summary>Spot holders who have never changed their mind on this check, even if they came back.</summary>
+    public IEnumerable<Participant> EarlyBirds =>
+        SpotHolders.Where(p => _changedMinds.All(c => c.PersonId != p.PersonId));
 
     public IEnumerable<Participant> LetInFromWaitlist => InSignUpOrder.Where(p => p.LetInAt is not null);
 
@@ -187,6 +197,7 @@ public class InterestCheck
         var participant = _participants.FirstOrDefault(p => p.PersonId == personId)
                           ?? throw new NotCountedInException();
         _participants.Remove(participant);
+        if (_changedMinds.All(c => c.PersonId != personId)) _changedMinds.Add(new ChangedMind(personId));
     }
 
     /// <summary>Anyone who holds a spot and arrives while the doors are open is checked in.</summary>
@@ -243,10 +254,16 @@ public class InterestCheck
 
     /// <summary>
     /// The venue as <paramref name="personId"/> may see it right now: only after the reveal, and only if they
-    /// are still counted in and hold a spot (or were let in from the waitlist). Otherwise null.
+    /// are still counted in and hold a spot (or were let in from the waitlist). Early birds see it an hour sooner.
     /// </summary>
-    public string? VenueVisibleTo(string personId, DateTimeOffset now) =>
-        VenueRevealAt <= now && SpotHolders.Any(p => p.PersonId == personId) ? Venue : null;
+    public string? VenueVisibleTo(string personId, DateTimeOffset now)
+    {
+        if (VenueRevealAt is not { } revealAt) return null;
+        var sees = now >= revealAt
+            ? SpotHolders.Any(p => p.PersonId == personId)
+            : now >= revealAt - EarlyBirdLead && EarlyBirds.Any(p => p.PersonId == personId);
+        return sees ? Venue : null;
+    }
 
     public void Close(string? ownerKey)
     {

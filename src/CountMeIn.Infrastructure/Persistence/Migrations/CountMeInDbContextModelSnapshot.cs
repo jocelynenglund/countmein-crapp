@@ -22,6 +22,31 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("CountMeIn.Domain.ChangedMind", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
+
+                    b.Property<string>("InterestCheckId")
+                        .IsRequired()
+                        .HasColumnType("character varying(64)");
+
+                    b.Property<string>("PersonId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("InterestCheckId", "PersonId")
+                        .IsUnique();
+
+                    b.ToTable("changed_minds", (string)null);
+                });
+
             modelBuilder.Entity("CountMeIn.Domain.InterestCheck", b =>
                 {
                     b.Property<string>("Id")
@@ -128,6 +153,15 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                     b.ToTable("participants", (string)null);
                 });
 
+            modelBuilder.Entity("CountMeIn.Domain.ChangedMind", b =>
+                {
+                    b.HasOne("CountMeIn.Domain.InterestCheck", null)
+                        .WithMany("ChangedMinds")
+                        .HasForeignKey("InterestCheckId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+                });
+
             modelBuilder.Entity("CountMeIn.Domain.Participant", b =>
                 {
                     b.HasOne("CountMeIn.Domain.InterestCheck", null)
@@ -139,6 +173,8 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
 
             modelBuilder.Entity("CountMeIn.Domain.InterestCheck", b =>
                 {
+                    b.Navigation("ChangedMinds");
+
                     b.Navigation("Participants");
                 });
 #pragma warning restore 612, 618

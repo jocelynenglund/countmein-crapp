@@ -22,6 +22,12 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
             .HasForeignKey("InterestCheckId")
             .IsRequired()
             .OnDelete(DeleteBehavior.Cascade);
+        builder.HasMany(c => c.ChangedMinds)
+            .WithOne()
+            .HasForeignKey("InterestCheckId")
+            .IsRequired()
+            .OnDelete(DeleteBehavior.Cascade);
+        builder.Navigation(c => c.ChangedMinds).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Navigation(c => c.Participants).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(c => c.Count);
         builder.Ignore(c => c.GoalReached);
@@ -32,6 +38,7 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
         builder.Ignore(c => c.InSignUpOrder);
         builder.Ignore(c => c.SpotHolders);
         builder.Ignore(c => c.Waitlist);
+        builder.Ignore(c => c.EarlyBirds);
         builder.Ignore(c => c.LetInFromWaitlist);
         builder.Ignore(c => c.LostTheirSpot);
         builder.Ignore(c => c.ReleaseAt);
@@ -50,5 +57,16 @@ public class ParticipantConfiguration : IEntityTypeConfiguration<Participant>
 
         // The same person can only be in a check once, even if two requests race.
         builder.HasIndex("InterestCheckId", nameof(Participant.PersonId)).IsUnique();
+    }
+}
+
+public class ChangedMindConfiguration : IEntityTypeConfiguration<ChangedMind>
+{
+    public void Configure(EntityTypeBuilder<ChangedMind> builder)
+    {
+        builder.ToTable("changed_minds");
+        builder.HasKey(c => c.Id);
+        builder.Property(c => c.PersonId).HasMaxLength(Identifiers.MaxLength).IsRequired();
+        builder.HasIndex("InterestCheckId", nameof(ChangedMind.PersonId)).IsUnique();
     }
 }
