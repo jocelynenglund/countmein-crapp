@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/CountMeIn.Api/CountMeIn.Api.csproj" />
+    <Project Path="src/CountMeIn.Application/CountMeIn.Application.csproj" />
+    <Project Path="src/CountMeIn.Domain/CountMeIn.Domain.csproj" />
+    <Project Path="src/CountMeIn.Infrastructure/CountMeIn.Infrastructure.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/CountMeIn.Api.Tests/CountMeIn.Api.Tests.csproj" />
+    <Project Path="tests/CountMeIn.Application.Tests/CountMeIn.Application.Tests.csproj" />
+    <Project Path="tests/CountMeIn.Domain.Tests/CountMeIn.Domain.Tests.csproj" />
+  </Folder>
+</Solution>
