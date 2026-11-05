@@ -28,8 +28,17 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
 
+                    b.Property<int?>("Capacity")
+                        .HasColumnType("integer");
+
                     b.Property<DateOnly?>("ClosesOn")
                         .HasColumnType("date");
+
+                    b.Property<DateTimeOffset?>("DoorsClose")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<DateTimeOffset?>("DoorsOpen")
+                        .HasColumnType("timestamp with time zone");
 
                     b.Property<int>("Goal")
                         .HasColumnType("integer");
@@ -65,6 +74,9 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
 
                     NpgsqlPropertyBuilderExtensions.UseIdentityByDefaultColumn(b.Property<int>("Id"));
 
+                    b.Property<DateTimeOffset?>("CheckedInAt")
+                        .HasColumnType("timestamp with time zone");
+
                     b.Property<string>("Email")
                         .HasMaxLength(200)
                         .HasColumnType("character varying(200)");
@@ -72,9 +84,6 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                     b.Property<string>("InterestCheckId")
                         .IsRequired()
                         .HasColumnType("character varying(64)");
-
-                    b.Property<DateOnly>("JoinedOn")
-                        .HasColumnType("date");
 
                     b.Property<string>("Name")
                         .IsRequired()
@@ -85,6 +94,9 @@ namespace CountMeIn.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(64)
                         .HasColumnType("character varying(64)");
+
+                    b.Property<DateTimeOffset>("SignedUpAt")
+                        .HasColumnType("timestamp with time zone");
 
                     b.HasKey("Id");
 

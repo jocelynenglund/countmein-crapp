@@ -24,6 +24,13 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
         builder.Navigation(c => c.Participants).UsePropertyAccessMode(PropertyAccessMode.Field);
         builder.Ignore(c => c.Count);
         builder.Ignore(c => c.GoalReached);
+        builder.Ignore(c => c.SpotsLeft);
+        builder.Ignore(c => c.WaitlistCount);
+
+        // Computed views over Participants, not relationships.
+        builder.Ignore(c => c.InSignUpOrder);
+        builder.Ignore(c => c.SpotHolders);
+        builder.Ignore(c => c.Waitlist);
     }
 }
 
