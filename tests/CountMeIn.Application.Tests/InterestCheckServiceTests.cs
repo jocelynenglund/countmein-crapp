@@ -569,4 +569,26 @@ public class InterestCheckServiceTests
         Assert.Equal("The library", doorList.Venue);
         Assert.Equal(RevealAt, doorList.VenueRevealAt);
     }
+
+    // Early birds
+
+    [Fact]
+    public async Task Early_birds_see_the_venue_an_hour_early_and_the_door_list_names_them()
+    {
+        var check = await StartWithDoors(capacity: 3);
+        await CountIn(check, "p1", "Ana");
+        await CountIn(check, "p2", "Ben");
+        await _service.ChangeMyMindAsync(check.CheckId, "p2");
+        await CountIn(check, "p2", "Ben");
+        await _service.SetVenueAsync(check.CheckId, check.OwnerKey, new SetVenueRequest("The library", RevealAt));
+
+        _clock.SetUtcNow(RevealAt.AddMinutes(-45));
+
+        Assert.Equal("The library", (await _service.GetVenueAsync(check.CheckId, "p1")).Venue);
+        Assert.Null((await _service.GetVenueAsync(check.CheckId, "p2")).Venue);
+        Assert.Equal(["Ana"], (await _service.GetDoorListAsync(check.CheckId, check.OwnerKey)).EarlyBirds);
+
+        _clock.SetUtcNow(RevealAt);
+        Assert.Equal("The library", (await _service.GetVenueAsync(check.CheckId, "p2")).Venue);
+    }
 }

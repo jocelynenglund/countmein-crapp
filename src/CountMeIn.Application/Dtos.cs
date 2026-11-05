@@ -28,7 +28,7 @@ public record CheckedInDto(string Name, DateTimeOffset At);
 public record DoorListDto(
     IReadOnlyList<CheckedInDto> CheckedIn, IReadOnlyList<string> Expected, IReadOnlyList<string> Waitlist,
     IReadOnlyList<string> LetInFromWaitlist, IReadOnlyList<string> LostTheirSpot,
-    string? Venue, DateTimeOffset? VenueRevealAt);
+    string? Venue, DateTimeOffset? VenueRevealAt, IReadOnlyList<string> EarlyBirds);
 
 public record SetVenueRequest(string? Venue, DateTimeOffset RevealAt);
 

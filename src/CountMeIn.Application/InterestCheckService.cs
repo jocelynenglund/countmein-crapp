@@ -95,7 +95,8 @@ public class InterestCheckService(
         var letIn = check.LetInFromWaitlist.Select(p => p.Name).ToList();
         var lost = check.LostTheirSpot.Select(p => p.Name).ToList();
 
-        return new DoorListDto(checkedIn, expected, waitlist, letIn, lost, check.Venue, check.VenueRevealAt);
+        return new DoorListDto(checkedIn, expected, waitlist, letIn, lost, check.Venue, check.VenueRevealAt,
+            check.EarlyBirds.Select(p => p.Name).ToList());
     }
 
     public async Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default)
