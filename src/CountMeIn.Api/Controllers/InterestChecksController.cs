@@ -36,6 +36,20 @@ public class InterestChecksController(IInterestCheckService service) : Controlle
         return NoContent();
     }
 
+    /// <summary>Check in at the door. Refused outside the entry window or while waitlisted.</summary>
+    [HttpPost("{checkId}/check-in")]
+    public async Task<IActionResult> CheckIn(string checkId, CheckInRequest request, CancellationToken ct)
+    {
+        await service.CheckInAsync(checkId, request, ct);
+        return NoContent();
+    }
+
+    /// <summary>Owner only: who has arrived, who is expected, and the waitlist in order.</summary>
+    [HttpGet("{checkId}/door-list")]
+    public async Task<DoorListDto> DoorList(
+        string checkId, [FromHeader(Name = OwnerKeyHeader)] string? ownerKey, CancellationToken ct) =>
+        await service.GetDoorListAsync(checkId, ownerKey, ct);
+
     /// <summary>Owner only: the count, sign-ups per day and who is in.</summary>
     [HttpGet("{checkId}/progress")]
     public async Task<ProgressDto> Progress(
