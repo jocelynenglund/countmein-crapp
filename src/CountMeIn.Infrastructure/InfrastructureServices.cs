@@ -5,7 +5,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace CountMeIn.Infrastructure;
 
-public static class DependencyInjection
+public static class InfrastructureServices
 {
     public const string DefaultConnectionString =
         "Host=localhost;Port=5435;Database=countmein_crapp;Username=postgres;Password=countmein";

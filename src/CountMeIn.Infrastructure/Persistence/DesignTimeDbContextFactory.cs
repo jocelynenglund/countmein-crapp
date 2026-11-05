@@ -8,6 +8,6 @@ public class DesignTimeDbContextFactory : IDesignTimeDbContextFactory<CountMeInD
 {
     public CountMeInDbContext CreateDbContext(string[] args) =>
         new(new DbContextOptionsBuilder<CountMeInDbContext>()
-            .UseNpgsql(DependencyInjection.DefaultConnectionString)
+            .UseNpgsql(InfrastructureServices.DefaultConnectionString)
             .Options);
 }

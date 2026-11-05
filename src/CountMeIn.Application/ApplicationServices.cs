@@ -2,7 +2,7 @@ using Microsoft.Extensions.DependencyInjection;
 
 namespace CountMeIn.Application;
 
-public static class DependencyInjection
+public static class ApplicationServices
 {
     public static IServiceCollection AddApplication(this IServiceCollection services)
     {
