@@ -15,3 +15,11 @@ public class AlreadyCountedInException() : DomainException("You're already count
 public class NotCountedInException() : DomainException("You're not counted in");
 
 public class NotOwnerException(string message) : DomainException(message);
+
+public class NotOnTheListException() : DomainException("You're not on the list");
+
+public class OutsideEntryWindowException() : DomainException("The doors aren't open");
+
+public class OnTheWaitlistException() : DomainException("You're on the waitlist");
+
+public class AlreadyCheckedInException() : DomainException("You're already checked in");
