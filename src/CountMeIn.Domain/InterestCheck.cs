@@ -93,8 +93,8 @@ public class InterestCheck
             Goal = goal,
             ClosesOn = closesOn,
             Capacity = capacity,
-            DoorsOpen = doorsOpen,
-            DoorsClose = doorsClose,
+            DoorsOpen = doorsOpen?.ToUniversalTime(), // timestamptz only stores UTC
+            DoorsClose = doorsClose?.ToUniversalTime(),
             OwnerKeyHash = OwnerKey.Hash(ownerKey),
         };
     }

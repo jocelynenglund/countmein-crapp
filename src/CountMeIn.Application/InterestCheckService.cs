@@ -13,7 +13,8 @@ public class InterestCheckService(
         var ownerKey = OwnerKey.Generate();
 
         var check = InterestCheck.Start(
-            checkId, request.Title, request.Pitch, request.Goal, request.ClosesOn, ownerKey, Today);
+            checkId, request.Title, request.Pitch, request.Goal, request.ClosesOn, ownerKey, Today,
+            request.Capacity, request.DoorsOpen, request.DoorsClose);
 
         await checks.AddAsync(check, ct);
         await unitOfWork.SaveChangesAsync(ct);
@@ -24,13 +25,14 @@ public class InterestCheckService(
     public async Task<PitchDto> GetPitchAsync(string checkId, CancellationToken ct = default)
     {
         var check = await Load(checkId, ct);
-        return new PitchDto(check.Title, check.Pitch, check.Goal, check.Count, check.GoalReached, !check.IsClosed, check.ClosesOn);
+        return new PitchDto(check.Title, check.Pitch, check.Goal, check.Count, check.GoalReached, !check.IsClosed, check.ClosesOn,
+            check.SpotsLeft, check.WaitlistCount);
     }
 
     public async Task CountMeInAsync(string checkId, CountMeInRequest request, CancellationToken ct = default)
     {
         var check = await Load(checkId, ct);
-        check.CountIn(request.PersonId ?? "", request.Name, request.Email, Today);
+        check.CountIn(request.PersonId ?? "", request.Name, request.Email, clock.GetUtcNow());
         await unitOfWork.SaveChangesAsync(ct);
     }
 
@@ -41,13 +43,35 @@ public class InterestCheckService(
         await unitOfWork.SaveChangesAsync(ct);
     }
 
+    public async Task CheckInAsync(string checkId, CheckInRequest request, CancellationToken ct = default)
+    {
+        var check = await Load(checkId, ct);
+        check.CheckIn(request.PersonId ?? "", clock.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<DoorListDto> GetDoorListAsync(string checkId, string? ownerKey, CancellationToken ct = default)
+    {
+        var check = await Load(checkId, ct);
+        if (!check.IsOwnedBy(ownerKey)) throw new NotOwnerException("Only the owner can see this");
+
+        var checkedIn = check.Participants.Where(p => p.CheckedInAt is not null)
+            .OrderBy(p => p.CheckedInAt)
+            .Select(p => new CheckedInDto(p.Name, p.CheckedInAt!.Value))
+            .ToList();
+        var expected = check.SpotHolders.Where(p => p.CheckedInAt is null).Select(p => p.Name).ToList();
+        var waitlist = check.Waitlist.Select(p => p.Name).ToList();
+
+        return new DoorListDto(checkedIn, expected, waitlist);
+    }
+
     public async Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default)
     {
         var check = await Load(checkId, ct);
         if (!check.IsOwnedBy(ownerKey)) throw new NotOwnerException("Only the owner can see this");
 
         var perDay = check.Participants
-            .GroupBy(p => p.JoinedOn)
+            .GroupBy(p => DateOnly.FromDateTime(p.SignedUpAt.UtcDateTime))
             .OrderBy(g => g.Key)
             .Select(g => new SignUpsPerDayDto(g.Key, g.Count()))
             .ToList();
