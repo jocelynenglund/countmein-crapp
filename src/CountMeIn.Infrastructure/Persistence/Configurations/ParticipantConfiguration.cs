@@ -10,6 +10,7 @@ public class ParticipantConfiguration : IEntityTypeConfiguration<Participant>
     {
         b.ToTable("participants");
         b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever(); // ids are assigned by the domain; EF must treat children found via navigation as new
         b.Property(x => x.PersonId).HasMaxLength(100).IsRequired();
         b.Property(x => x.Name).HasMaxLength(200).IsRequired();
         b.Property(x => x.Email).HasMaxLength(320);

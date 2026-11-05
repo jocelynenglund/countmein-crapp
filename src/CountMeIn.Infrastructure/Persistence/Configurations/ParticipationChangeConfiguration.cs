@@ -10,6 +10,7 @@ public class ParticipationChangeConfiguration : IEntityTypeConfiguration<Partici
     {
         b.ToTable("participation_changes");
         b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever(); // ids are assigned by the domain; EF must treat children found via navigation as new
         b.Property(x => x.PersonId).HasMaxLength(100).IsRequired();
         b.Property(x => x.Kind).HasConversion<string>().HasMaxLength(20);
         b.HasIndex(x => new { x.CheckId, x.Day });

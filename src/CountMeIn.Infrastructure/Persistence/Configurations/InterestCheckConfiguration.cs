@@ -10,6 +10,7 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
     {
         b.ToTable("interest_checks");
         b.HasKey(x => x.Id);
+        b.Property(x => x.Id).ValueGeneratedNever(); // ids are assigned by the domain; EF must treat children found via navigation as new
         b.Property(x => x.ShareId).HasMaxLength(32).IsRequired();
         b.HasIndex(x => x.ShareId).IsUnique();
         b.Property(x => x.OwnerKeyHash).HasMaxLength(64).IsRequired();
