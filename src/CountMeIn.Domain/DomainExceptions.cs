@@ -25,3 +25,5 @@ public class OnTheWaitlistException() : DomainException("You're on the waitlist"
 public class AlreadyCheckedInException() : DomainException("You're already checked in");
 
 public class SpotWentToWaitlistException() : DomainException("Your spot went to the waitlist");
+
+public class VenueAlreadyRevealedException() : DomainException("The venue has already been revealed");

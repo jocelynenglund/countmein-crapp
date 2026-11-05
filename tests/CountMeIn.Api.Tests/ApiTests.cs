@@ -235,4 +235,42 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
         var ben = await client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p2" });
         Assert.Equal(HttpStatusCode.NoContent, ben.StatusCode);
     }
+
+    [Fact]
+    public async Task The_venue_is_revealed_over_http_only_to_people_with_a_spot()
+    {
+        var response = await _client.PostAsJsonAsync("/api/checks", new { title = "Secret supper", goal = 2, capacity = 1 });
+        var check = (await response.Content.ReadFromJsonAsync<StartedInterestCheckDto>())!;
+        await CountIn(check.CheckId, "p1", "Ana");
+        await CountIn(check.CheckId, "p2", "Ben");
+        var revealAt = DateTimeOffset.UtcNow.AddSeconds(2);
+
+        var stranger = new HttpRequestMessage(HttpMethod.Put, $"/api/checks/{check.CheckId}/venue")
+        { Content = JsonContent.Create(new { venue = "The library", revealAt }) };
+        stranger.Headers.Add("X-Owner-Key", "wrong");
+        Assert.Equal(HttpStatusCode.Forbidden, (await _client.SendAsync(stranger)).StatusCode);
+
+        var set = new HttpRequestMessage(HttpMethod.Put, $"/api/checks/{check.CheckId}/venue")
+        { Content = JsonContent.Create(new { venue = "The library", revealAt }) };
+        set.Headers.Add("X-Owner-Key", check.OwnerKey);
+        Assert.Equal(HttpStatusCode.NoContent, (await _client.SendAsync(set)).StatusCode);
+
+        var before = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p1"))!;
+        Assert.Null(before.Venue);
+        Assert.NotNull(before.RevealAt);
+
+        await Task.Delay(TimeSpan.FromSeconds(2.5));
+
+        var ana = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p1"))!;
+        var ben = (await _client.GetFromJsonAsync<VenueDto>($"/api/checks/{check.CheckId}/venue?personId=p2"))!;
+        Assert.Equal("The library", ana.Venue);
+        Assert.Null(ben.Venue);
+
+        var tooLate = new HttpRequestMessage(HttpMethod.Put, $"/api/checks/{check.CheckId}/venue")
+        { Content = JsonContent.Create(new { venue = "Elsewhere", revealAt = revealAt.AddDays(1) }) };
+        tooLate.Headers.Add("X-Owner-Key", check.OwnerKey);
+        var refused = await _client.SendAsync(tooLate);
+        Assert.Equal(HttpStatusCode.Conflict, refused.StatusCode);
+        Assert.Equal("The venue has already been revealed", await Error(refused));
+    }
 }

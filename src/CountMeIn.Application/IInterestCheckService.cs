@@ -15,6 +15,10 @@ public interface IInterestCheckService
     /// <summary>Releases the unclaimed spots of every check whose release moment has come. Run on a timer.</summary>
     Task ReleaseDueSpotsAsync(CancellationToken ct = default);
 
+    Task SetVenueAsync(string checkId, string? ownerKey, SetVenueRequest request, CancellationToken ct = default);
+
+    Task<VenueDto> GetVenueAsync(string checkId, string? personId, CancellationToken ct = default);
+
     Task<DoorListDto> GetDoorListAsync(string checkId, string? ownerKey, CancellationToken ct = default);
 
     Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default);

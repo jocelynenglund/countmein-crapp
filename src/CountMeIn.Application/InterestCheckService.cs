@@ -67,6 +67,19 @@ public class InterestCheckService(
         await unitOfWork.SaveChangesAsync(ct);
     }
 
+    public async Task SetVenueAsync(string checkId, string? ownerKey, SetVenueRequest request, CancellationToken ct = default)
+    {
+        var check = await Load(checkId, ct);
+        check.SetVenue(ownerKey, request.Venue, request.RevealAt, clock.GetUtcNow());
+        await unitOfWork.SaveChangesAsync(ct);
+    }
+
+    public async Task<VenueDto> GetVenueAsync(string checkId, string? personId, CancellationToken ct = default)
+    {
+        var check = await Load(checkId, ct);
+        return new VenueDto(check.VenueRevealAt, check.VenueVisibleTo(personId ?? "", clock.GetUtcNow()));
+    }
+
     public async Task<DoorListDto> GetDoorListAsync(string checkId, string? ownerKey, CancellationToken ct = default)
     {
         var check = await Load(checkId, ct);
@@ -82,7 +95,7 @@ public class InterestCheckService(
         var letIn = check.LetInFromWaitlist.Select(p => p.Name).ToList();
         var lost = check.LostTheirSpot.Select(p => p.Name).ToList();
 
-        return new DoorListDto(checkedIn, expected, waitlist, letIn, lost);
+        return new DoorListDto(checkedIn, expected, waitlist, letIn, lost, check.Venue, check.VenueRevealAt);
     }
 
     public async Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default)
