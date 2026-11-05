@@ -10,6 +10,10 @@ public interface IInterestCheckService
 
     Task ChangeMyMindAsync(string checkId, string personId, CancellationToken ct = default);
 
+    Task CheckInAsync(string checkId, CheckInRequest request, CancellationToken ct = default);
+
+    Task<DoorListDto> GetDoorListAsync(string checkId, string? ownerKey, CancellationToken ct = default);
+
     Task<ProgressDto> GetProgressAsync(string checkId, string? ownerKey, CancellationToken ct = default);
 
     Task CloseAsync(string checkId, string? ownerKey, CancellationToken ct = default);

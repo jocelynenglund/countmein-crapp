@@ -47,7 +47,7 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
             (await _client.DeleteAsync($"/api/checks/{check.CheckId}/interest/p2")).StatusCode);
 
         var pitch = (await _client.GetFromJsonAsync<PitchDto>($"/api/checks/{check.CheckId}"))!;
-        Assert.Equal(new PitchDto("Saturday board-game club", "Monthly games at the library", 2, 1, false, true, null), pitch);
+        Assert.Equal(new PitchDto("Saturday board-game club", "Monthly games at the library", 2, 1, false, true, null, null, 0), pitch);
 
         var progress = (await (await AsOwner(HttpMethod.Get, $"/api/checks/{check.CheckId}/progress", check.OwnerKey))
             .Content.ReadFromJsonAsync<ProgressDto>())!;
@@ -148,5 +148,52 @@ public class ApiTests(WebApplicationFactory<Program> factory) : IClassFixture<We
         Assert.All(responses.Where(r => r.StatusCode != HttpStatusCode.NoContent),
             r => Assert.Equal(HttpStatusCode.Conflict, r.StatusCode));
         Assert.Equal(1, (await _client.GetFromJsonAsync<PitchDto>($"/api/checks/{check.CheckId}"))!.Count);
+    }
+
+    [Fact]
+    public async Task Capacity_waitlist_and_check_in_over_http()
+    {
+        var opens = DateTimeOffset.UtcNow.AddHours(-1);
+        var response = await _client.PostAsJsonAsync("/api/checks", new
+        {
+            title = "Launch party", goal = 2, capacity = 1, doorsOpen = opens, doorsClose = opens.AddHours(4),
+        });
+        var check = (await response.Content.ReadFromJsonAsync<StartedInterestCheckDto>())!;
+        await CountIn(check.CheckId, "p1", "Ana");
+        await CountIn(check.CheckId, "p2", "Ben");
+
+        var pitch = (await _client.GetFromJsonAsync<PitchDto>($"/api/checks/{check.CheckId}"))!;
+        Assert.Equal(0, pitch.SpotsLeft);
+        Assert.Equal(1, pitch.WaitlistCount);
+
+        var waitlisted = await _client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p2" });
+        Assert.Equal(HttpStatusCode.Conflict, waitlisted.StatusCode);
+        Assert.Equal("You're on the waitlist", await Error(waitlisted));
+
+        var stranger = await _client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p9" });
+        Assert.Equal("You're not on the list", await Error(stranger));
+
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await _client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p1" })).StatusCode);
+
+        var forbidden = await AsOwner(HttpMethod.Get, $"/api/checks/{check.CheckId}/door-list", "wrong");
+        Assert.Equal(HttpStatusCode.Forbidden, forbidden.StatusCode);
+
+        var doorList = (await (await AsOwner(HttpMethod.Get, $"/api/checks/{check.CheckId}/door-list", check.OwnerKey))
+            .Content.ReadFromJsonAsync<DoorListDto>())!;
+        Assert.Equal("Ana", Assert.Single(doorList.CheckedIn).Name);
+        Assert.Empty(doorList.Expected);
+        Assert.Equal(["Ben"], doorList.Waitlist);
+    }
+
+    [Fact]
+    public async Task Check_in_is_refused_when_the_check_has_no_entry_window()
+    {
+        var check = await Start();
+        await CountIn(check.CheckId, "p1", "Ana");
+
+        var response = await _client.PostAsJsonAsync($"/api/checks/{check.CheckId}/check-in", new { personId = "p1" });
+
+        Assert.Equal(HttpStatusCode.Conflict, response.StatusCode);
     }
 }

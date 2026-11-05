@@ -24,6 +24,14 @@ public class InterestCheck
 
     public DateOnly? ClosesOn { get; private set; }
 
+    /// <summary>How many people get a spot; null means unlimited. Everyone after that is on the waitlist.</summary>
+    public int? Capacity { get; private set; }
+
+    /// <summary>The entry window. Without one, nobody can check in.</summary>
+    public DateTimeOffset? DoorsOpen { get; private set; }
+
+    public DateTimeOffset? DoorsClose { get; private set; }
+
     public string OwnerKeyHash { get; private set; } = null!;
 
     public bool IsClosed { get; private set; }
@@ -34,8 +42,22 @@ public class InterestCheck
 
     public bool GoalReached => Count >= Goal;
 
+    public int? SpotsLeft => Capacity is { } capacity ? Math.Max(0, capacity - Count) : null;
+
+    public int WaitlistCount => Capacity is { } capacity ? Math.Max(0, Count - capacity) : 0;
+
+    /// <summary>Everyone counted in, in sign-up order.</summary>
+    public IEnumerable<Participant> InSignUpOrder => _participants.OrderBy(p => p.SignedUpAt).ThenBy(p => p.Id);
+
+    /// <summary>The first <c>Capacity</c> people in sign-up order hold a spot.</summary>
+    public IEnumerable<Participant> SpotHolders => Capacity is { } capacity ? InSignUpOrder.Take(capacity) : InSignUpOrder;
+
+    /// <summary>Everyone after the first <c>Capacity</c> people, in the order they will move up.</summary>
+    public IEnumerable<Participant> Waitlist => Capacity is { } capacity ? InSignUpOrder.Skip(capacity) : [];
+
     public static InterestCheck Start(
-        string id, string? title, string? pitch, int goal, DateOnly? closesOn, string ownerKey, DateOnly today)
+        string id, string? title, string? pitch, int goal, DateOnly? closesOn, string ownerKey, DateOnly today,
+        int? capacity = null, DateTimeOffset? doorsOpen = null, DateTimeOffset? doorsClose = null)
     {
         if (!Identifiers.IsValid(id)) throw new InvalidInterestCheckException("invalid checkId");
 
@@ -55,6 +77,12 @@ public class InterestCheck
         if (closesOn is { } date && date < today)
             throw new InvalidInterestCheckException("The closing date has already passed");
 
+        if (capacity is < 1) throw new InvalidInterestCheckException("Capacity must be at least 1");
+
+        if ((doorsOpen is null) != (doorsClose is null))
+            throw new InvalidInterestCheckException("Give both when the doors open and when they close");
+        if (doorsOpen >= doorsClose) throw new InvalidInterestCheckException("The doors must open before they close");
+
         if (string.IsNullOrEmpty(ownerKey)) throw new InvalidInterestCheckException("An owner key is required");
 
         return new InterestCheck
@@ -64,6 +92,9 @@ public class InterestCheck
             Pitch = pitch,
             Goal = goal,
             ClosesOn = closesOn,
+            Capacity = capacity,
+            DoorsOpen = doorsOpen?.ToUniversalTime(), // timestamptz only stores UTC
+            DoorsClose = doorsClose?.ToUniversalTime(),
             OwnerKeyHash = OwnerKey.Hash(ownerKey),
         };
     }
@@ -72,7 +103,7 @@ public class InterestCheck
 
     public bool IsOwnedBy(string? ownerKey) => OwnerKey.Matches(ownerKey, OwnerKeyHash);
 
-    public void CountIn(string personId, string? name, string? email, DateOnly today)
+    public void CountIn(string personId, string? name, string? email, DateTimeOffset at)
     {
         if (IsClosed) throw new InterestCheckClosedException();
 
@@ -88,7 +119,7 @@ public class InterestCheck
         if (!Identifiers.IsValid(personId)) throw new InvalidInterestCheckException("invalid personId");
         if (IsCountedIn(personId)) throw new AlreadyCountedInException();
 
-        _participants.Add(new Participant(personId, name, email, today));
+        _participants.Add(new Participant(personId, name, email, at));
     }
 
     /// <summary>
@@ -100,6 +131,19 @@ public class InterestCheck
         var participant = _participants.FirstOrDefault(p => p.PersonId == personId)
                           ?? throw new NotCountedInException();
         _participants.Remove(participant);
+    }
+
+    /// <summary>Anyone who holds a spot and arrives while the doors are open is checked in.</summary>
+    public void CheckIn(string personId, DateTimeOffset at)
+    {
+        var participant = _participants.FirstOrDefault(p => p.PersonId == personId)
+                          ?? throw new NotOnTheListException();
+        if (DoorsOpen is not { } open || DoorsClose is not { } close || at < open || at >= close)
+            throw new OutsideEntryWindowException();
+        if (Waitlist.Contains(participant)) throw new OnTheWaitlistException();
+        if (participant.CheckedInAt is not null) throw new AlreadyCheckedInException();
+
+        participant.CheckIn(at);
     }
 
     public void Close(string? ownerKey)

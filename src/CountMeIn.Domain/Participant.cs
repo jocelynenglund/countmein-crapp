@@ -8,12 +8,12 @@ public class Participant
 
     private Participant() { } // EF Core
 
-    internal Participant(string personId, string name, string? email, DateOnly joinedOn)
+    internal Participant(string personId, string name, string? email, DateTimeOffset signedUpAt)
     {
         PersonId = personId;
         Name = name;
         Email = email;
-        JoinedOn = joinedOn;
+        SignedUpAt = signedUpAt;
     }
 
     public int Id { get; private set; }
@@ -25,5 +25,9 @@ public class Participant
 
     public string? Email { get; private set; }
 
-    public DateOnly JoinedOn { get; private set; }
+    public DateTimeOffset SignedUpAt { get; private set; }
+
+    public DateTimeOffset? CheckedInAt { get; private set; }
+
+    internal void CheckIn(DateTimeOffset at) => CheckedInAt = at;
 }

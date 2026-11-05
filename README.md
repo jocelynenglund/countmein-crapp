@@ -49,6 +49,14 @@ dotnet test
 
 The connection string is `ConnectionStrings:CountMeIn` (default: localhost port 5435, database `countmein_crapp`). Override with the env var `ConnectionStrings__CountMeIn`. Add a migration with `dotnet tool restore` then `dotnet tool run dotnet-ef migrations add <Name> -p src/CountMeIn.Infrastructure -s src/CountMeIn.Infrastructure -o Persistence/Migrations`.
 
+## Check-in (branch pivot-check-in)
+
+- `POST /api/checks` also takes `capacity` and `doorsOpen`/`doorsClose` (both or neither; open before close).
+- Spots are derived, not stored: the first `capacity` participants by sign-up time hold a spot, the rest are the waitlist. Withdrawing deletes the row, so the next person moves up by themselves, and re-joining inserts a new row at the back.
+- `POST /api/checks/{id}/check-in` `{personId}`; entry window is open <= now < close. Checked in is a timestamp on the participant.
+- `GET /api/checks/{id}/door-list` (owner only): checked in, expected, waitlist. The pitch gains `spotsLeft` and `waitlistCount`.
+- `JoinedOn` (a date) became `SignedUpAt` (a timestamp), which gives the ordering; per-day sign-ups are derived from it.
+
 ## Design choices
 
 - **Current state only.** Two tables: `interest_checks` and `participants`. Nothing records what used to be true.

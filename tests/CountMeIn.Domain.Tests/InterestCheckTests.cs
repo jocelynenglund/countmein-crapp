@@ -5,6 +5,7 @@ namespace CountMeIn.Domain.Tests;
 public class InterestCheckTests
 {
     private static readonly DateOnly Today = new(2026, 11, 4);
+    private static readonly DateTimeOffset At = new(2026, 11, 4, 12, 0, 0, TimeSpan.Zero);
     private const string OwnerKeyValue = "k1";
 
     private static InterestCheck NewCheck(int goal = 10, DateOnly? closesOn = null) =>
@@ -87,13 +88,13 @@ public class InterestCheckTests
     {
         var check = NewCheck();
 
-        check.CountIn("p1", " Ana ", "ana@example.com", Today);
+        check.CountIn("p1", " Ana ", "ana@example.com", At);
 
         Assert.Equal(1, check.Count);
         var ana = Assert.Single(check.Participants);
         Assert.Equal("Ana", ana.Name);
         Assert.Equal("ana@example.com", ana.Email);
-        Assert.Equal(Today, ana.JoinedOn);
+        Assert.Equal(At, ana.SignedUpAt);
         Assert.True(check.IsCountedIn("p1"));
     }
 
@@ -101,7 +102,7 @@ public class InterestCheckTests
     public void A_blank_email_is_stored_as_no_email()
     {
         var check = NewCheck();
-        check.CountIn("p1", "Ana", "  ", Today);
+        check.CountIn("p1", "Ana", "  ", At);
         Assert.Null(check.Participants.Single().Email);
     }
 
@@ -112,7 +113,7 @@ public class InterestCheckTests
     public void You_need_a_name(string? name)
     {
         var check = NewCheck();
-        var ex = Assert.Throws<InvalidInterestCheckException>(() => check.CountIn("p1", name, null, Today));
+        var ex = Assert.Throws<InvalidInterestCheckException>(() => check.CountIn("p1", name, null, At));
         Assert.Equal("What's your name?", ex.Message);
         Assert.Equal(0, check.Count);
     }
@@ -121,9 +122,9 @@ public class InterestCheckTests
     public void Counting_in_twice_is_refused_and_does_not_add_a_second_person()
     {
         var check = NewCheck();
-        check.CountIn("p1", "Ana", null, Today);
+        check.CountIn("p1", "Ana", null, At);
 
-        Assert.Throws<AlreadyCountedInException>(() => check.CountIn("p1", "Ana", null, Today));
+        Assert.Throws<AlreadyCountedInException>(() => check.CountIn("p1", "Ana", null, At));
         Assert.Equal(1, check.Count);
     }
 
@@ -133,7 +134,7 @@ public class InterestCheckTests
         var check = NewCheck();
         check.Close(OwnerKeyValue);
 
-        Assert.Throws<InterestCheckClosedException>(() => check.CountIn("p2", "Ben", null, Today));
+        Assert.Throws<InterestCheckClosedException>(() => check.CountIn("p2", "Ben", null, At));
         Assert.Equal(0, check.Count);
     }
 
@@ -141,10 +142,10 @@ public class InterestCheckTests
     public void Reaching_the_goal_is_reported()
     {
         var check = NewCheck(goal: 2);
-        check.CountIn("p1", "Ana", null, Today);
+        check.CountIn("p1", "Ana", null, At);
         Assert.False(check.GoalReached);
 
-        check.CountIn("p2", "Ben", null, Today);
+        check.CountIn("p2", "Ben", null, At);
         Assert.True(check.GoalReached);
     }
 
@@ -154,8 +155,8 @@ public class InterestCheckTests
     public void Changing_your_mind_takes_you_out_of_the_count()
     {
         var check = NewCheck();
-        check.CountIn("p1", "Ana", null, Today);
-        check.CountIn("p2", "Ben", null, Today);
+        check.CountIn("p1", "Ana", null, At);
+        check.CountIn("p2", "Ben", null, At);
 
         check.Withdraw("p1");
 
@@ -175,10 +176,10 @@ public class InterestCheckTests
     public void Changed_your_mind_then_back_in()
     {
         var check = NewCheck();
-        check.CountIn("p1", "Ana", null, Today);
+        check.CountIn("p1", "Ana", null, At);
         check.Withdraw("p1");
 
-        check.CountIn("p1", "Ana", null, Today);
+        check.CountIn("p1", "Ana", null, At);
 
         Assert.Equal(1, check.Count);
     }
@@ -211,5 +212,175 @@ public class InterestCheckTests
         var check = NewCheck();
         check.Close(OwnerKeyValue);
         Assert.Throws<AlreadyClosedException>(() => check.Close(OwnerKeyValue));
+    }
+
+    // Capacity and the waitlist
+
+    private static InterestCheck WithCapacity(int capacity) =>
+        InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today, capacity: capacity);
+
+    private static void CountIn(InterestCheck check, string personId, int minute) =>
+        check.CountIn(personId, personId.ToUpper(), null, At.AddMinutes(minute));
+
+    private static string[] Names(IEnumerable<Participant> people) => people.Select(p => p.PersonId).ToArray();
+
+    [Fact]
+    public void Capacity_must_be_at_least_1()
+    {
+        Assert.Throws<InvalidInterestCheckException>(() =>
+            InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today, capacity: 0));
+    }
+
+    [Fact]
+    public void Without_a_capacity_everyone_has_a_spot()
+    {
+        var check = NewCheck();
+        CountIn(check, "p1", 0);
+        CountIn(check, "p2", 1);
+
+        Assert.Null(check.SpotsLeft);
+        Assert.Equal(0, check.WaitlistCount);
+        Assert.Equal(["p1", "p2"], Names(check.SpotHolders));
+    }
+
+    [Fact]
+    public void The_first_people_in_hold_the_spots_and_the_rest_wait()
+    {
+        var check = WithCapacity(2);
+        CountIn(check, "p1", 0);
+        Assert.Equal(1, check.SpotsLeft);
+
+        CountIn(check, "p2", 1);
+        CountIn(check, "p3", 2);
+        CountIn(check, "p4", 3);
+
+        Assert.Equal(0, check.SpotsLeft);
+        Assert.Equal(2, check.WaitlistCount);
+        Assert.Equal(["p1", "p2"], Names(check.SpotHolders));
+        Assert.Equal(["p3", "p4"], Names(check.Waitlist));
+    }
+
+    [Fact]
+    public void When_a_spot_holder_changes_their_mind_the_next_in_line_moves_up()
+    {
+        var check = WithCapacity(2);
+        CountIn(check, "p1", 0);
+        CountIn(check, "p2", 1);
+        CountIn(check, "p3", 2);
+        CountIn(check, "p4", 3);
+
+        check.Withdraw("p1");
+
+        Assert.Equal(["p2", "p3"], Names(check.SpotHolders));
+        Assert.Equal(["p4"], Names(check.Waitlist));
+    }
+
+    [Fact]
+    public void Re_joining_puts_you_at_the_back()
+    {
+        var check = WithCapacity(2);
+        CountIn(check, "p1", 0);
+        CountIn(check, "p2", 1);
+        CountIn(check, "p3", 2);
+        check.Withdraw("p1");
+
+        CountIn(check, "p1", 3);
+
+        Assert.Equal(["p2", "p3"], Names(check.SpotHolders));
+        Assert.Equal(["p1"], Names(check.Waitlist));
+    }
+
+    // Checking in
+
+    private static readonly DateTimeOffset DoorsOpen = At.AddHours(1);
+    private static readonly DateTimeOffset DoorsClose = At.AddHours(3);
+    private static readonly DateTimeOffset DuringDoors = At.AddHours(2);
+
+    private static InterestCheck WithDoors(int? capacity = null) =>
+        InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today,
+            capacity, DoorsOpen, DoorsClose);
+
+    [Fact]
+    public void Doors_must_open_before_they_close()
+    {
+        Assert.Throws<InvalidInterestCheckException>(() =>
+            InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today,
+                doorsOpen: DoorsClose, doorsClose: DoorsOpen));
+        Assert.Throws<InvalidInterestCheckException>(() =>
+            InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today,
+                doorsOpen: DoorsOpen, doorsClose: DoorsOpen));
+    }
+
+    [Fact]
+    public void A_window_needs_both_ends()
+    {
+        Assert.Throws<InvalidInterestCheckException>(() =>
+            InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today, doorsOpen: DoorsOpen));
+    }
+
+    [Fact]
+    public void Checking_in_during_the_window_records_the_time()
+    {
+        var check = WithDoors();
+        CountIn(check, "p1", 0);
+
+        check.CheckIn("p1", DuringDoors);
+
+        Assert.Equal(DuringDoors, check.Participants.Single().CheckedInAt);
+    }
+
+    [Fact]
+    public void You_cant_check_in_if_you_are_not_counted_in()
+    {
+        var check = WithDoors();
+        var ex = Assert.Throws<NotOnTheListException>(() => check.CheckIn("p1", DuringDoors));
+        Assert.Equal("You're not on the list", ex.Message);
+    }
+
+    [Theory]
+    [InlineData(-1)]   // before the doors open
+    [InlineData(120)]  // at the closing time
+    [InlineData(500)]  // long after
+    public void You_cant_check_in_outside_the_window(int minutesFromOpening)
+    {
+        var check = WithDoors();
+        CountIn(check, "p1", 0);
+
+        Assert.Throws<OutsideEntryWindowException>(() => check.CheckIn("p1", DoorsOpen.AddMinutes(minutesFromOpening)));
+        Assert.Null(check.Participants.Single().CheckedInAt);
+    }
+
+    [Fact]
+    public void Without_a_window_nobody_can_check_in()
+    {
+        var check = NewCheck();
+        CountIn(check, "p1", 0);
+        Assert.Throws<OutsideEntryWindowException>(() => check.CheckIn("p1", DuringDoors));
+    }
+
+    [Fact]
+    public void A_waitlisted_person_cant_check_in_until_a_spot_opens_up()
+    {
+        var check = WithDoors(capacity: 1);
+        CountIn(check, "p1", 0);
+        CountIn(check, "p2", 1);
+
+        var ex = Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p2", DuringDoors));
+        Assert.Equal("You're on the waitlist", ex.Message);
+
+        check.Withdraw("p1");
+        check.CheckIn("p2", DuringDoors);
+        Assert.NotNull(check.Participants.Single().CheckedInAt);
+    }
+
+    [Fact]
+    public void You_cant_check_in_twice()
+    {
+        var check = WithDoors();
+        CountIn(check, "p1", 0);
+        check.CheckIn("p1", DuringDoors);
+
+        Assert.Throws<AlreadyCheckedInException>(() => check.CheckIn("p1", DuringDoors.AddMinutes(1)));
+        Assert.Equal(DuringDoors, check.Participants.Single().CheckedInAt);
     }
 }
