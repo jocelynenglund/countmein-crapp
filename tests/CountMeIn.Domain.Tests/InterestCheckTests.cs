@@ -383,4 +383,154 @@ public class InterestCheckTests
         Assert.Throws<AlreadyCheckedInException>(() => check.CheckIn("p1", DuringDoors.AddMinutes(1)));
         Assert.Equal(DuringDoors, check.Participants.Single().CheckedInAt);
     }
+
+    // Releasing unclaimed spots
+
+    private static readonly DateTimeOffset ReleaseMoment = DoorsClose.AddMinutes(-10);
+
+    /// <summary>Capacity 2: Ana and Ben hold spots; Cy, Di and Ed wait.</summary>
+    private static InterestCheck FiveSignedUp()
+    {
+        var check = WithDoors(capacity: 2);
+        foreach (var (id, minute) in new[] { ("p1", 0), ("p2", 1), ("p3", 2), ("p4", 3), ("p5", 4) })
+            CountIn(check, id, minute);
+        return check;
+    }
+
+    [Fact]
+    public void The_release_moment_is_ten_minutes_before_the_doors_close()
+    {
+        Assert.Equal(ReleaseMoment, WithDoors().ReleaseAt);
+    }
+
+    [Fact]
+    public void A_window_shorter_than_ten_minutes_releases_when_the_doors_open()
+    {
+        var check = InterestCheck.Start("c1", "Board games", null, 10, null, OwnerKeyValue, Today,
+            1, DoorsOpen, DoorsOpen.AddMinutes(5));
+        Assert.Equal(DoorsOpen, check.ReleaseAt);
+    }
+
+    [Fact]
+    public void Nothing_is_released_before_the_release_moment()
+    {
+        var check = FiveSignedUp();
+        check.ReleaseUnclaimedSpots(ReleaseMoment.AddSeconds(-1));
+
+        Assert.Null(check.SpotsReleasedAt);
+        Assert.Empty(check.LostTheirSpot);
+        Assert.Equal(["p1", "p2"], Names(check.SpotHolders));
+    }
+
+    [Fact]
+    public void Unclaimed_spots_go_to_the_waitlisted_who_tried_the_door_first_come_first_served()
+    {
+        var check = FiveSignedUp();
+        check.CheckIn("p1", DoorsOpen.AddMinutes(10));                       // Ana arrives
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p5", DoorsOpen.AddMinutes(20))); // Ed tries first
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(30))); // then Cy; Di never tries
+
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Equal(["p2"], Names(check.LostTheirSpot));
+        Assert.Equal(["p5"], Names(check.LetInFromWaitlist));    // only Ben's spot was unclaimed
+        Assert.Equal(["p1", "p5"], Names(check.SpotHolders));
+        Assert.Equal(["p3", "p4"], Names(check.Waitlist));
+        Assert.Equal(ReleaseMoment, check.SpotsReleasedAt);
+    }
+
+    [Fact]
+    public void Someone_let_in_can_then_check_in_normally()
+    {
+        var check = FiveSignedUp();
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(20)));
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        check.CheckIn("p3", ReleaseMoment.AddMinutes(1));
+
+        Assert.NotNull(check.Participants.Single(p => p.PersonId == "p3").CheckedInAt);
+    }
+
+    [Fact]
+    public void Spot_holders_who_lost_their_spot_are_refused_if_they_arrive_later()
+    {
+        var check = FiveSignedUp();
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        var ex = Assert.Throws<SpotWentToWaitlistException>(() => check.CheckIn("p1", ReleaseMoment.AddMinutes(1)));
+        Assert.Equal("Your spot went to the waitlist", ex.Message);
+    }
+
+    [Fact]
+    public void Waitlisted_people_who_never_tried_the_door_are_not_let_in()
+    {
+        var check = FiveSignedUp();
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Empty(check.LetInFromWaitlist);
+        Assert.Equal(["p3", "p4", "p5"], Names(check.Waitlist));
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", ReleaseMoment.AddMinutes(1)));
+    }
+
+    [Fact]
+    public void Trying_the_door_after_the_release_does_not_earn_a_spot()
+    {
+        var check = FiveSignedUp();
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", ReleaseMoment.AddMinutes(1)));
+
+        Assert.Null(check.Participants.Single(p => p.PersonId == "p3").DoorAttemptAt);
+    }
+
+    [Fact]
+    public void Only_the_first_attempt_counts()
+    {
+        var check = FiveSignedUp();
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(10)));
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(50)));
+
+        Assert.Equal(DoorsOpen.AddMinutes(10), check.Participants.Single(p => p.PersonId == "p3").DoorAttemptAt);
+    }
+
+    [Fact]
+    public void A_refused_attempt_outside_the_window_is_not_recorded()
+    {
+        var check = FiveSignedUp();
+        Assert.Throws<OutsideEntryWindowException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(-5)));
+        Assert.Null(check.Participants.Single(p => p.PersonId == "p3").DoorAttemptAt);
+    }
+
+    [Fact]
+    public void The_release_only_happens_once()
+    {
+        var check = FiveSignedUp();
+        Assert.Throws<OnTheWaitlistException>(() => check.CheckIn("p3", DoorsOpen.AddMinutes(10)));
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        check.ReleaseUnclaimedSpots(ReleaseMoment.AddMinutes(5));
+
+        Assert.Equal(["p1", "p2"], Names(check.LostTheirSpot));
+        Assert.Equal(ReleaseMoment, check.SpotsReleasedAt);
+    }
+
+    [Fact]
+    public void An_unlimited_check_has_nothing_to_release()
+    {
+        var check = WithDoors();
+        CountIn(check, "p1", 0);
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Null(check.SpotsReleasedAt);
+        Assert.Empty(check.LostTheirSpot);
+    }
+
+    [Fact]
+    public void Released_spots_nobody_asked_for_stay_empty_and_are_not_counted_as_spots_left()
+    {
+        var check = FiveSignedUp();
+        check.ReleaseUnclaimedSpots(ReleaseMoment);
+
+        Assert.Equal(0, check.SpotsLeft);
+        Assert.Equal(3, check.WaitlistCount);
+    }
 }

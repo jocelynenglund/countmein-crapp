@@ -42,18 +42,67 @@ public class InterestCheck
 
     public bool GoalReached => Count >= Goal;
 
-    public int? SpotsLeft => Capacity is { } capacity ? Math.Max(0, capacity - Count) : null;
+    /// <summary>When unclaimed spots were handed to the waitlist; null until then.</summary>
+    public DateTimeOffset? SpotsReleasedAt { get; private set; }
 
-    public int WaitlistCount => Capacity is { } capacity ? Math.Max(0, Count - capacity) : 0;
+    /// <summary>How many spots were taken from people who hadn't arrived.</summary>
+    public int ReleasedSpots { get; private set; }
+
+    /// <summary>Unclaimed spots are released this long before the doors close.</summary>
+    public static readonly TimeSpan ReleaseLead = TimeSpan.FromMinutes(10);
+
+    /// <summary>The release moment: 10 minutes before the doors close, but never before they open.</summary>
+    public DateTimeOffset? ReleaseAt =>
+        DoorsOpen is { } open && DoorsClose is { } close ? Max(open, close - ReleaseLead) : null;
 
     /// <summary>Everyone counted in, in sign-up order.</summary>
     public IEnumerable<Participant> InSignUpOrder => _participants.OrderBy(p => p.SignedUpAt).ThenBy(p => p.Id);
 
-    /// <summary>The first <c>Capacity</c> people in sign-up order hold a spot.</summary>
-    public IEnumerable<Participant> SpotHolders => Capacity is { } capacity ? InSignUpOrder.Take(capacity) : InSignUpOrder;
+    /// <summary>
+    /// Who holds a spot: the first <c>Capacity</c> people in sign-up order. After the release, the people
+    /// let in from the waitlist, plus the first (Capacity - released spots) of those who kept their place.
+    /// </summary>
+    public IEnumerable<Participant> SpotHolders
+    {
+        get
+        {
+            if (Capacity is not { } capacity) return InSignUpOrder;
+            if (SpotsReleasedAt is null) return InSignUpOrder.Take(capacity);
 
-    /// <summary>Everyone after the first <c>Capacity</c> people, in the order they will move up.</summary>
-    public IEnumerable<Participant> Waitlist => Capacity is { } capacity ? InSignUpOrder.Skip(capacity) : [];
+            var kept = InSignUpOrder.Where(p => p.SpotLostAt is null && p.LetInAt is null)
+                .Take(capacity - ReleasedSpots).ToHashSet();
+            return InSignUpOrder.Where(p => p.LetInAt is not null || kept.Contains(p));
+        }
+    }
+
+    /// <summary>Counted in without a spot, in the order they will move up. People who lost their spot aren't on it.</summary>
+    public IEnumerable<Participant> Waitlist
+    {
+        get
+        {
+            if (Capacity is null) return [];
+            var holders = SpotHolders.ToHashSet();
+            return InSignUpOrder.Where(p => p.SpotLostAt is null && !holders.Contains(p));
+        }
+    }
+
+    public IEnumerable<Participant> LetInFromWaitlist => InSignUpOrder.Where(p => p.LetInAt is not null);
+
+    public IEnumerable<Participant> LostTheirSpot => InSignUpOrder.Where(p => p.SpotLostAt is not null);
+
+    public int? SpotsLeft
+    {
+        get
+        {
+            if (Capacity is not { } capacity) return null;
+            var unfilledReleased = ReleasedSpots - LetInFromWaitlist.Count();
+            return Math.Max(0, capacity - SpotHolders.Count() - unfilledReleased);
+        }
+    }
+
+    public int WaitlistCount => Waitlist.Count();
+
+    private static DateTimeOffset Max(DateTimeOffset a, DateTimeOffset b) => a > b ? a : b;
 
     public static InterestCheck Start(
         string id, string? title, string? pitch, int goal, DateOnly? closesOn, string ownerKey, DateOnly today,
@@ -140,10 +189,34 @@ public class InterestCheck
                           ?? throw new NotOnTheListException();
         if (DoorsOpen is not { } open || DoorsClose is not { } close || at < open || at >= close)
             throw new OutsideEntryWindowException();
-        if (Waitlist.Contains(participant)) throw new OnTheWaitlistException();
+        if (participant.SpotLostAt is not null) throw new SpotWentToWaitlistException();
+        if (Waitlist.Contains(participant))
+        {
+            // Remember who came to the door first: they get the released spots.
+            if (SpotsReleasedAt is null) participant.TriedTheDoor(at);
+            throw new OnTheWaitlistException();
+        }
         if (participant.CheckedInAt is not null) throw new AlreadyCheckedInException();
 
         participant.CheckIn(at);
+    }
+
+    /// <summary>
+    /// From the release moment on, spots held by people who haven't checked in go to the waitlisted people
+    /// who already tried the door, first come first served. Safe to call again: it only happens once.
+    /// </summary>
+    public void ReleaseUnclaimedSpots(DateTimeOffset now)
+    {
+        if (Capacity is null || SpotsReleasedAt is not null || ReleaseAt is not { } releaseAt || now < releaseAt) return;
+
+        var unclaimed = SpotHolders.Where(p => p.CheckedInAt is null).ToList();
+        var next = Waitlist.Where(p => p.DoorAttemptAt is not null)
+            .OrderBy(p => p.DoorAttemptAt).Take(unclaimed.Count).ToList();
+
+        foreach (var holder in unclaimed) holder.LoseSpot(now);
+        foreach (var person in next) person.LetIn(now);
+        ReleasedSpots = unclaimed.Count;
+        SpotsReleasedAt = now;
     }
 
     public void Close(string? ownerKey)

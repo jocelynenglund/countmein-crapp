@@ -29,5 +29,20 @@ public class Participant
 
     public DateTimeOffset? CheckedInAt { get; private set; }
 
+    /// <summary>When a waitlisted person first tried to get in at the door.</summary>
+    public DateTimeOffset? DoorAttemptAt { get; private set; }
+
+    /// <summary>When the spot they held went to the waitlist because they hadn't arrived.</summary>
+    public DateTimeOffset? SpotLostAt { get; private set; }
+
+    /// <summary>When they were let in from the waitlist into a released spot.</summary>
+    public DateTimeOffset? LetInAt { get; private set; }
+
+    internal void TriedTheDoor(DateTimeOffset at) => DoorAttemptAt ??= at;
+
+    internal void LoseSpot(DateTimeOffset at) => SpotLostAt = at;
+
+    internal void LetIn(DateTimeOffset at) => LetInAt = at;
+
     internal void CheckIn(DateTimeOffset at) => CheckedInAt = at;
 }
