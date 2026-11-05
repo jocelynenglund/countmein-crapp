@@ -42,6 +42,13 @@ public class InterestCheck
 
     public bool GoalReached => Count >= Goal;
 
+    public const int MaxVenueLength = 200;
+
+    /// <summary>Where it happens. Hidden until <see cref="VenueRevealAt"/>, then shown only to people who are in.</summary>
+    public string? Venue { get; private set; }
+
+    public DateTimeOffset? VenueRevealAt { get; private set; }
+
     /// <summary>When unclaimed spots were handed to the waitlist; null until then.</summary>
     public DateTimeOffset? SpotsReleasedAt { get; private set; }
 
@@ -218,6 +225,28 @@ public class InterestCheck
         ReleasedSpots = unclaimed.Count;
         SpotsReleasedAt = now;
     }
+
+    /// <summary>The owner can set or change the venue and when it is revealed, until the reveal has happened.</summary>
+    public void SetVenue(string? ownerKey, string? venue, DateTimeOffset revealAt, DateTimeOffset now)
+    {
+        if (!IsOwnedBy(ownerKey)) throw new NotOwnerException("Only the owner can set the venue");
+        if (VenueRevealAt <= now) throw new VenueAlreadyRevealedException();
+
+        venue = (venue ?? "").Trim();
+        if (venue.Length == 0) throw new InvalidInterestCheckException("Where is it?");
+        if (venue.Length > MaxVenueLength)
+            throw new InvalidInterestCheckException($"The venue must be {MaxVenueLength} characters or fewer");
+
+        Venue = venue;
+        VenueRevealAt = revealAt.ToUniversalTime();
+    }
+
+    /// <summary>
+    /// The venue as <paramref name="personId"/> may see it right now: only after the reveal, and only if they
+    /// are still counted in and hold a spot (or were let in from the waitlist). Otherwise null.
+    /// </summary>
+    public string? VenueVisibleTo(string personId, DateTimeOffset now) =>
+        VenueRevealAt <= now && SpotHolders.Any(p => p.PersonId == personId) ? Venue : null;
 
     public void Close(string? ownerKey)
     {

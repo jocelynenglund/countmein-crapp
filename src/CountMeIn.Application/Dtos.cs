@@ -27,4 +27,10 @@ public record CheckedInDto(string Name, DateTimeOffset At);
 /// <summary>What the owner sees at the door: who is in, who is still expected, and who is waiting for a spot.</summary>
 public record DoorListDto(
     IReadOnlyList<CheckedInDto> CheckedIn, IReadOnlyList<string> Expected, IReadOnlyList<string> Waitlist,
-    IReadOnlyList<string> LetInFromWaitlist, IReadOnlyList<string> LostTheirSpot);
+    IReadOnlyList<string> LetInFromWaitlist, IReadOnlyList<string> LostTheirSpot,
+    string? Venue, DateTimeOffset? VenueRevealAt);
+
+public record SetVenueRequest(string? Venue, DateTimeOffset RevealAt);
+
+/// <summary>Venue is null until the reveal, and for anyone who isn't in with a spot. RevealAt is null if none is set.</summary>
+public record VenueDto(DateTimeOffset? RevealAt, string? Venue);

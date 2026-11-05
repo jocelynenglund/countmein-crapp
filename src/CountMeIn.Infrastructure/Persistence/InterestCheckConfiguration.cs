@@ -13,6 +13,7 @@ public class InterestCheckConfiguration : IEntityTypeConfiguration<InterestCheck
         builder.Property(c => c.Id).HasMaxLength(Identifiers.MaxLength).ValueGeneratedNever();
         builder.Property(c => c.Title).HasMaxLength(InterestCheck.MaxTitleLength).IsRequired();
         builder.Property(c => c.Pitch).HasMaxLength(InterestCheck.MaxPitchLength).IsRequired();
+        builder.Property(c => c.Venue).HasMaxLength(InterestCheck.MaxVenueLength);
         builder.Property(c => c.OwnerKeyHash).HasMaxLength(64).IsRequired();
 
         // The aggregate exposes a read-only view; EF fills the private list.

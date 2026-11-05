@@ -36,6 +36,20 @@ public class InterestChecksController(IInterestCheckService service) : Controlle
         return NoContent();
     }
 
+    /// <summary>Owner only: set or change the venue and when it is revealed, until it has been revealed.</summary>
+    [HttpPut("{checkId}/venue")]
+    public async Task<IActionResult> SetVenue(
+        string checkId, SetVenueRequest request, [FromHeader(Name = OwnerKeyHeader)] string? ownerKey, CancellationToken ct)
+    {
+        await service.SetVenueAsync(checkId, ownerKey, request, ct);
+        return NoContent();
+    }
+
+    /// <summary>The venue, if it has been revealed and this person is in with a spot; otherwise just when it will be.</summary>
+    [HttpGet("{checkId}/venue")]
+    public async Task<VenueDto> Venue(string checkId, [FromQuery] string? personId, CancellationToken ct) =>
+        await service.GetVenueAsync(checkId, personId, ct);
+
     /// <summary>Check in at the door. Refused outside the entry window or while waitlisted.</summary>
     [HttpPost("{checkId}/check-in")]
     public async Task<IActionResult> CheckIn(string checkId, CheckInRequest request, CancellationToken ct)
